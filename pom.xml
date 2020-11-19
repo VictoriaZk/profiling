@@ -32,6 +32,14 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- https://mvnrepository.com/artifact/com.medallia.word2vec/Word2VecJava -->
+        <dependency>
+            <groupId>com.medallia.word2vec</groupId>
+            <artifactId>Word2VecJava</artifactId>
+            <version>0.10.3</version>
+        </dependency>
+
+
         <dependency>
             <groupId>mysql</groupId>
             <artifactId>mysql-connector-java</artifactId>

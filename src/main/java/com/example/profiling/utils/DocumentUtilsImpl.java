@@ -1,9 +1,9 @@
 package com.example.profiling.utils;
 
-import com.example.profiling.model.Document;
+import com.medallia.word2vec.*;
+import com.medallia.word2vec.neuralnetwork.NeuralNetworkType;
 import javafx.util.Pair;
 
-import javax.persistence.Tuple;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -11,8 +11,10 @@ public class DocumentUtilsImpl {
     private static final int numberSentencesEssay = 10;
 
     private final List<String> documents;
+    private final String mainTerm;
 
-    public DocumentUtilsImpl(List<String> documents){
+    public DocumentUtilsImpl(List<String> documents, String mainTerm){
+        this.mainTerm = mainTerm;
         this.documents = documents;
     }
 
@@ -29,31 +31,60 @@ public class DocumentUtilsImpl {
         return text.split("[.!?]");
     }
 
+
+
+
     public String getEssay(){
         List<String> meaningfulSentences = getMeaningfulSentences();
 
         return String.join(". ", meaningfulSentences);
     }
 
-    public List<String> getMeaningfulSentences(){
+    private Integer getPositionInDocument(String[] sentences, String sentence){
+        for (int i = 0; i < sentences.length; i++) {
+            if(sentences[i].equals(sentence)){
+                return i;
+            }
+        }
+
+        return 0;
+    }
+
+    private Integer getPositionInParagraph(String document, String sentence){
+        String[] splitTextBySentences = getSplitTextBySentences(document);
+
+        for (int i = 0; i < splitTextBySentences.length; i++) {
+            if(splitTextBySentences[i].equals(sentence)){
+                return i;
+            }
+        }
+
+        return 0;
+    }
+
+    private List<String> getMeaningfulSentences(){
         Map<String, Double> weightSentences = getWeightSentences();
 
         Optional<Double> first = weightSentences.values()
                 .stream().sorted(Comparator.reverseOrder()).skip(numberSentencesEssay).findFirst();
 
         return first.map(aDouble -> weightSentences.entrySet().stream()
-                .filter(entrySet -> entrySet.getValue() > aDouble)
+                .filter(entrySet -> entrySet.getValue() >= aDouble)
                 .map(Map.Entry::getKey).collect(Collectors.toList()))
                 .orElseGet(() -> new ArrayList<>(weightSentences.keySet()));
     }
 
-    public Map<String, Double> getWeightSentences(){
+    private Map<String, Double> getWeightSentences(){
         Map<String, Double> weightSentences = new LinkedHashMap<>();
 
         documents.forEach(document -> {
             String[] sentencesByDocument = getSplitTextBySentences(document);
             for (String sentence : sentencesByDocument) {
-                weightSentences.put(sentence, getWeightSentence(document, sentence));
+                Double weightSentence = getWeightSentence(document, sentence)
+                        * getPositionInDocument(sentencesByDocument, sentence)
+                        * getPositionInParagraph(document, sentence);
+
+                weightSentences.put(sentence, weightSentence);
             }
         });
 
@@ -61,7 +92,7 @@ public class DocumentUtilsImpl {
     }
 
     //Score(Si)
-    public Double getWeightSentence(String document, String sentence){
+    private Double getWeightSentence(String document, String sentence){
         String[] splitWords = getSplitWords(sentence);
 
         return Arrays.stream(splitWords).mapToDouble((term) ->
@@ -69,7 +100,7 @@ public class DocumentUtilsImpl {
     }
 
     //w(t,D)
-    public Double getIDFTermInDocument(String term, String document){
+    private Double getIDFTermInDocument(String term, String document){
         Double result = 0.5 * (1 + (getTermFrequencyByDocument(term, document) /
                 getMaxTermFrequencyInDocument(document)));
 
@@ -79,7 +110,7 @@ public class DocumentUtilsImpl {
     }
 
     //tf(t,D)
-    public Double getTermFrequencyByDocument(String term, String document){
+    private Double getTermFrequencyByDocument(String term, String document){
         String[] splitWords = getSplitWords(document);
         Map<String, Integer> termsOccurrences = getTermsOccurrences(splitWords);
 
@@ -90,7 +121,7 @@ public class DocumentUtilsImpl {
     }
 
     //df(t)
-    public Integer getNumberDocumentWithTerm(String term){
+    private Integer getNumberDocumentWithTerm(String term){
         Integer number = documents.stream()
                 .mapToInt(document -> document.toLowerCase().contains(term) ? 1 : 0).sum();
 
@@ -102,7 +133,7 @@ public class DocumentUtilsImpl {
     }
 
     //tf max(D)
-    public Double getMaxTermFrequencyInDocument(String document){
+    private Double getMaxTermFrequencyInDocument(String document){
         String[] splitWords = getSplitWords(document);
         Map<String, Integer> termsOccurrences = getTermsOccurrences(splitWords);
 
@@ -122,12 +153,6 @@ public class DocumentUtilsImpl {
         return getCleanText(text).split(" ");
     }
 
-    public  static Set<String> getAllTerms(String text) {
-        String[] words = getCleanText(text).split(" ");
-
-        return Arrays.stream(words).collect(Collectors.toSet());
-    }
-
     public static Map<String, Integer> getTermsOccurrences(String[] words){
 
         Map<String, Integer> initialForms = new HashMap<>();
@@ -144,11 +169,81 @@ public class DocumentUtilsImpl {
         return initialForms;
     }
 
-    public static Map<String, Double> getTermsFrequency(String text) {
-        String[] allWords = getSplitWords(text);
-        Map<String, Integer> termsOccurrences = getTermsOccurrences(allWords);
-        return termsOccurrences.entrySet().stream()
-                .collect(Collectors.toMap(Map.Entry::getKey,
-                        entry -> Double.valueOf(entry.getValue()) / allWords.length));
+    public List<Object> getEssayByML(){
+        Word2VecModel model = getTestWord2Vec();
+        String fullText = String.join("", documents);
+        String[] splitTextBySentences = getSplitTextBySentences(fullText);
+        List<Pair> weightSentences = Arrays.stream(splitTextBySentences).map(sentence -> {
+            String[] splitWords = getSplitWords(sentence);
+
+            double weightSentence = Arrays.stream(splitWords).mapToDouble(word -> {
+                return getWeightWord(model, word);
+            }).sum();
+
+            return new Pair<String, Double>(sentence, weightSentence);
+        }).collect(Collectors.toList());
+
+        Optional<Double> first = weightSentences.stream().map(pair -> (Double)pair.getValue())
+                .sorted(Comparator.reverseOrder()).skip(numberSentencesEssay).findFirst();
+
+
+        return first.map(aDouble -> weightSentences.stream()
+                .filter(pair -> (Double)pair.getValue() > aDouble)
+                .map(Pair::getKey).collect(Collectors.toList()))
+                .orElseGet(() -> weightSentences.stream().map(Pair::getKey).collect(Collectors.toList()));
+
+
+
+    }
+
+
+    private Double getWeightWord(Word2VecModel model, String term){
+        try{
+            return model.forSearch().cosineDistance(term, mainTerm);
+        }catch (Exception ex){
+            return 0.001;
+        }
+    }
+
+    private Word2VecModel getTestWord2Vec() {
+
+        try {
+            String fullText = String.join("", documents);
+            List<List<String>> sentences = documents.stream()
+                    .map( document -> Arrays.stream(getSplitTextBySentences(document)).collect(Collectors.toList()))
+                    .collect(Collectors.toList());
+
+            String[] splitTextBySentences = getSplitTextBySentences(fullText);
+            List<List<String>> collect = Arrays.stream(splitTextBySentences)
+                    .map(sentence -> Arrays.stream(getSplitWords(sentence))
+                            .collect(Collectors.toList())).collect(Collectors.toList());
+
+            Word2VecModel train = Word2VecModel.trainer()
+                    .setWindowSize(15)
+                    .type(NeuralNetworkType.SKIP_GRAM)
+                    .setLayerSize(6000)
+                    .useNegativeSamples(25)
+                    .setDownSamplingRate(1e-4)
+                    .setNumIterations(5)
+                    .train(collect);
+
+            //Double cosineDistance = train.forSearch().cosineDistance("мозг", "полушария");
+
+            return train;
+
+//            List<String> vocab = train.toThrift().deepCopy().getVocab();
+//
+//            List<Double> vectors = train.toThrift().getVectors();
+//
+//            List<Searcher.Match> words = train.forSearch().getMatches("мозг", 10);
+//
+//            List<Searcher.Match> matches = train.forSearch().getMatches(words.get(4).match(), 10);
+//
+//            List<Searcher.Match> matches2 = train.forSearch().getMatches(matches.get(4).match(), 10);
+//
+//            NormalizedWord2VecModel normalizedWord2VecModel = NormalizedWord2VecModel.fromWord2VecModel(train);
+        }catch (Exception ex){
+            return null;
+        }
     }
 }

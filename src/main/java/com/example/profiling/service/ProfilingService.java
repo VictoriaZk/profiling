@@ -11,7 +11,7 @@ import java.util.stream.Collectors;
 
 @Service
 public class ProfilingService {
-    public SearchResult profiling(List<MultipartFile> fileList){
+    public SearchResult profiling(List<MultipartFile> fileList, String mainTerm){
         List<String> filesContext = fileList.stream().map(file -> {
             try {
                 return new String(file.getBytes());
@@ -21,11 +21,17 @@ public class ProfilingService {
             }
         }).collect(Collectors.toList());
 
-        DocumentUtilsImpl documentUtils = new DocumentUtilsImpl(filesContext);
+        DocumentUtilsImpl documentUtils = new DocumentUtilsImpl(filesContext, mainTerm);
+
+        List<Object> essayByML = documentUtils.getEssayByML();
+
+        String collect = essayByML.stream().map(sentence -> (String) sentence).collect(Collectors.joining("."));
 
 
+        DocumentUtilsImpl docUtils = new DocumentUtilsImpl(filesContext, mainTerm);
         return SearchResult.builder()
-                .document(documentUtils.getEssay())
+                .document(docUtils.getEssay())
+                .document2(collect)
                 .build();
     }
 }

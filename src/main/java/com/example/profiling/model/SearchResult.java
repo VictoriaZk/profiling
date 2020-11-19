@@ -12,5 +12,6 @@ import lombok.NoArgsConstructor;
 
 public class SearchResult {
     private String document;
+    private String document2;
     private String snippet;
 }

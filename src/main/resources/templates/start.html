@@ -25,6 +25,8 @@
                 </div>
                 <div class="modal-body">
                     <input type="file" name="filesToProfiling" id="filesToProfiling" class="form-control-file" multiple>
+                    <label>Main term:</label>
+                    <input type="text" name="mainTerm">
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
@@ -39,6 +41,15 @@
     <div th:if="${searchResult != null}" class="flex-row flex-md-row align-items-left p-3 mb-3 bg-white  shadow-sm border-top border-bottom border-left border-right row">
         <div class="w-100"></div>
         <div class="col" th:text="${searchResult.document}"></div>
+    </div>
+
+    <div th:if="${searchResult != null}" class="flex-row flex-md-row align-items-left p-3 mb-3 bg-white  shadow-sm border-top border-bottom border-left border-right row">
+        <h3>С машинным обучением</h3>
+    </div>
+
+    <div th:if="${searchResult != null}" class="flex-row flex-md-row align-items-left p-3 mb-3 bg-white  shadow-sm border-top border-bottom border-left border-right row">
+        <div class="w-100"></div>
+        <div class="col" th:text="${searchResult.document2}"></div>
     </div>
 </div>
 </body>
