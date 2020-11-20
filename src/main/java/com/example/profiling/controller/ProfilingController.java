@@ -21,9 +21,8 @@ public class ProfilingController {
 
     @PostMapping("profiling")
     public String getLanguageOfText(@RequestParam(value = "filesToProfiling") List<MultipartFile> files,
-                                    @RequestParam(value = "mainTerm") String mainTerm,
                                     Model model) {
-        model.addAttribute("searchResult", profilingService.profiling(files, mainTerm));
+        model.addAttribute("searchResult", profilingService.profiling(files));
 
         return "start";
     }

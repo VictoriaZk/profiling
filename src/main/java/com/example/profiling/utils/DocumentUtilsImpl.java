@@ -1,5 +1,6 @@
 package com.example.profiling.utils;
 
+import com.google.common.collect.ImmutableList;
 import com.medallia.word2vec.*;
 import com.medallia.word2vec.neuralnetwork.NeuralNetworkType;
 import javafx.util.Pair;
@@ -11,10 +12,10 @@ public class DocumentUtilsImpl {
     private static final int numberSentencesEssay = 10;
 
     private final List<String> documents;
-    private final String mainTerm;
+    private String mainTerm;
+    private double[] vectorMainWord;
 
-    public DocumentUtilsImpl(List<String> documents, String mainTerm){
-        this.mainTerm = mainTerm;
+    public DocumentUtilsImpl(List<String> documents){
         this.documents = documents;
     }
 
@@ -31,6 +32,10 @@ public class DocumentUtilsImpl {
         return text.split("[.!?]");
     }
 
+    public static String[] getSplitTextByParagraphs(String text){
+        return text.split("\n\n");
+    }
+
 
 
 
@@ -40,26 +45,23 @@ public class DocumentUtilsImpl {
         return String.join(". ", meaningfulSentences);
     }
 
-    private Integer getPositionInDocument(String[] sentences, String sentence){
-        for (int i = 0; i < sentences.length; i++) {
-            if(sentences[i].equals(sentence)){
-                return i;
-            }
-        }
-
-        return 0;
+    private Double getPositionInDocument(String document, String sentence){
+        return 1 - ((double)document.indexOf(sentence) / document.length());
     }
 
-    private Integer getPositionInParagraph(String document, String sentence){
-        String[] splitTextBySentences = getSplitTextBySentences(document);
+    private Double getPositionInParagraph(String document, String sentence){
+        String[] splitTextByParagraphs = getSplitTextByParagraphs(document);
 
-        for (int i = 0; i < splitTextBySentences.length; i++) {
-            if(splitTextBySentences[i].equals(sentence)){
-                return i;
+        String paragraph = " ";
+        for (String splitTextByParagraph : splitTextByParagraphs) {
+            if(splitTextByParagraph.contains(sentence)){
+                paragraph = splitTextByParagraph;
+                break;
             }
         }
 
-        return 0;
+
+        return 1 - ((double) paragraph.indexOf(sentence) /  paragraph.length());
     }
 
     private List<String> getMeaningfulSentences(){
@@ -69,7 +71,7 @@ public class DocumentUtilsImpl {
                 .stream().sorted(Comparator.reverseOrder()).skip(numberSentencesEssay).findFirst();
 
         return first.map(aDouble -> weightSentences.entrySet().stream()
-                .filter(entrySet -> entrySet.getValue() >= aDouble)
+                .filter(entrySet -> entrySet.getValue() > aDouble)
                 .map(Map.Entry::getKey).collect(Collectors.toList()))
                 .orElseGet(() -> new ArrayList<>(weightSentences.keySet()));
     }
@@ -81,7 +83,7 @@ public class DocumentUtilsImpl {
             String[] sentencesByDocument = getSplitTextBySentences(document);
             for (String sentence : sentencesByDocument) {
                 Double weightSentence = getWeightSentence(document, sentence)
-                        * getPositionInDocument(sentencesByDocument, sentence)
+                        * getPositionInDocument(document, sentence)
                         * getPositionInParagraph(document, sentence);
 
                 weightSentences.put(sentence, weightSentence);
@@ -218,7 +220,7 @@ public class DocumentUtilsImpl {
                     .map(sentence -> Arrays.stream(getSplitWords(sentence))
                             .collect(Collectors.toList())).collect(Collectors.toList());
 
-            Word2VecModel train = Word2VecModel.trainer()
+            Word2VecModel model = Word2VecModel.trainer()
                     .setWindowSize(15)
                     .type(NeuralNetworkType.SKIP_GRAM)
                     .setLayerSize(6000)
@@ -227,9 +229,59 @@ public class DocumentUtilsImpl {
                     .setNumIterations(5)
                     .train(collect);
 
+            Iterable<String> vocab = model.getVocab();
+
+            List<ImmutableList<Double>> vectors = new ArrayList<>();
+
+
+
+            Iterator<String> iterator = vocab.iterator();
+
+            for(int i = 0; i < 7; i++){
+                String str = iterator.next();
+
+                try {
+                    if(str.length() >= 4) {
+                        vectors.add(model.forSearch().getRawVector(str));
+                    }else {
+                        i--;
+                    }
+                } catch (Searcher.UnknownWordException e) {
+
+                }
+            }
+
+            int size = vectors.get(0).size();
+
+            List<Double> mainVector = new ArrayList<>();
+
+            for(int i = 0; i < size; i++){
+                Double property = 1D;
+
+                for (ImmutableList<Double> vector : vectors) {
+                    if (!vector.get(i).equals(0D)) {
+                        property *= vector.get(i);
+                    }
+                }
+
+                mainVector.add((calculate(Math.abs(property), (double)vectors.size())));
+            }
+
+
+            double[] target = new double[mainVector.size()];
+            for (int i = 0; i < target.length; i++) {
+                target[i] = mainVector.get(i);
+            }
+
+            vectorMainWord = target;
+            List<Searcher.Match> matches = model.forSearch().getMatches(target, 1);
+
+            mainTerm = matches.get(0).match();
+
+
             //Double cosineDistance = train.forSearch().cosineDistance("мозг", "полушария");
 
-            return train;
+            return model;
 
 //            List<String> vocab = train.toThrift().deepCopy().getVocab();
 //
@@ -245,5 +297,9 @@ public class DocumentUtilsImpl {
         }catch (Exception ex){
             return null;
         }
+    }
+
+    public Double calculate(Double base, Double n) {
+        return Math.pow(Math.E, Math.log(base)/n);
     }
 }
